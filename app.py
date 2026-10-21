@@ -504,28 +504,3 @@ if __name__ == "__main__":
     log(f"Fuente PDF: {FONT_PATH or 'Helvetica (sin Unicode completo)'}")
     log(f"Estado cargado: siguiente capítulo {state['next_chapter']}")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False, threaded=True)
-import os
-from flask import jsonify, request, send_from_directory
-
-# Ajusta DOWNLOAD_FOLDER según cómo lo tengas definido en tu app.py
-DOWNLOAD_FOLDER = "downloads"  
-
-
-@app.route("/delete_pdf/<filename>", methods=["DELETE"])
-def delete_pdf(filename):
-  try:
-    # Previene ataques de traversía de directorios
-    safe_filename = os.path.basename(filename)
-    file_path = os.path.join(DOWNLOAD_FOLDER, safe_filename)
-
-    if os.path.exists(file_path):
-      os.remove(file_path)
-      return jsonify(
-          {"status": "success", "message": f"{safe_filename} eliminado"}
-      )
-    else:
-      return jsonify(
-          {"status": "error", "message": "El archivo no existe"}
-      ), 404
-  except Exception as e:
-    return jsonify({"status": "error", "message": str(e)}), 500
