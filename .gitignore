@@ -1,23 +1,22 @@
-<<<<<<< HEAD
-# Archivos creados por GitHub al inicializar
+# Registros
 *.log
-=======
-# Tu versión local
-venv/
-__pycache__/
->>>>>>> 5a0387b... Primera versión...
 
-
-# Archivos locales del descargador
+# Python y entornos virtuales
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Variables de entorno y credenciales locales
 .env
 .env.*
 !.env.example
+
+# Caché y progreso del descargador
 .cache/
 estado.json
 estado.json.tmp
+
+# PDFs y archivos temporales
 *.pdf
 *.part
