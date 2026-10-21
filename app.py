@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Yerno Millonario - Descargador de capítulos a PDF (Flask + threading)
+Descargador Miltisitios - Descargador de capítulos a PDF (Flask + threading)
 
 Ejecutar:  python app.py   ->  http://0.0.0.0:5000
 """
+import uuid
+import sites
 import json
 import os
 import re
@@ -26,7 +28,7 @@ except ImportError:  # pragma: no cover
 # ----------------------------------------------------------------------------
 # Configuración
 # ----------------------------------------------------------------------------
-START_CHAPTER = int(os.environ.get("YM_START", 6947))
+START_CHAPTER = int(os.environ.get("YM_START", 1))
 CHAPTERS_PER_PDF = 10
 URL_TEMPLATE = "https://xperimentalhamid.com/es/novels/millionaire-son-in-law-novel-chapter-{n}/"
 
@@ -80,6 +82,8 @@ def default_state():
         "pdfs": [],                      # PDFs generados
         "merged": [],                    # PDFs unidos
         "updated": None,
+        "source": None,
+        "initial_chapter": START_CHAPTER,
     }
 
 
@@ -118,41 +122,17 @@ SKIP_PATTERNS = re.compile(
 
 
 def fetch_chapter(n):
-    """Devuelve dict {title, paragraphs} o None si el capítulo no existe (404)."""
-    url = URL_TEMPLATE.format(n=n)
-    last_err = None
-    for attempt in range(1, RETRIES + 1):
-        try:
-            r = session.get(url, timeout=30)
-            if r.status_code == 404:
-                return None
-            r.raise_for_status()
-            soup = BeautifulSoup(r.text, "html.parser")
-            content = soup.select_one("div.entry-content")
-            if content is None:
-                raise ValueError("no se encontró div.entry-content")
-            h1 = soup.select_one("h1.entry-title") or soup.find("h1")
-            title = h1.get_text(" ", strip=True) if h1 else f"Capítulo {n}"
-
-            for bad in content.select("script, style, ins, iframe, noscript, "
-                                      ".wp-block-buttons, .gt-block, .sharedaddy"):
-                bad.decompose()
-
-            paragraphs = []
-            for p in content.find_all(["p", "h2", "h3"]):
-                txt = p.get_text(" ", strip=True)
-                if not txt or SKIP_PATTERNS.search(txt):
-                    continue
-                paragraphs.append(txt)
-            if not paragraphs:
-                raise ValueError("capítulo sin texto")
-            return {"n": n, "title": title, "paragraphs": paragraphs}
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            log(f"  intento {attempt}/{RETRIES} falló en cap. {n}: {e}")
-            if worker.stop_event.wait(5 * attempt):
-                break
-    raise RuntimeError(f"no se pudo descargar el capítulo {n}: {last_err}")
+    source = state.get('source')
+    url = source['urls'][n - 1] if source else URL_TEMPLATE.format(n=n)
+    soup, actual = sites.page(url, source or {})
+    title, paragraphs = sites.text(soup, (source or {}).get('content_selector', ''))
+    if source and n == len(source['urls']):
+        nxt = sites.next_url(soup, actual, source.get('next_selector', ''))
+        if nxt and nxt not in source['urls']:
+            with state_lock:
+                source['urls'].append(nxt)
+                save_state()
+    return {'n': n, 'title': title, 'paragraphs': paragraphs, 'url': actual}
 
 
 def cache_path(n):
@@ -195,16 +175,16 @@ class NovelPDF(FPDF):
 
 
 def build_pdf(first, last):
-    name = f"Capítulos_{first}-{last}.pdf"
+    name = f"{(state.get('source') or {}).get('id', 'legacy')}_Capítulos_{first}-{last}.pdf"
     path = os.path.join(OUTPUT_DIR, name)
-    pdf = NovelPDF(f"Yerno Millonario {first}-{last}")
-    pdf.set_title(f"Yerno Millonario - Capítulos {first}-{last}")
+    pdf = NovelPDF(f"{(state.get('source') or {}).get('title', 'Yerno Millonario')} {first}-{last}")
+    pdf.set_title(f"{(state.get('source') or {}).get('title', 'Yerno Millonario')} - Capítulos {first}-{last}")
 
     # Portada
     pdf.add_page()
     pdf.set_font(pdf.font_name, "", 22)
     pdf.ln(60)
-    pdf.multi_cell(0, 12, pdf.txt("Yerno Millonario"), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 12, pdf.txt((state.get('source') or {}).get('title', 'Yerno Millonario')), align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font(pdf.font_name, "", 14)
     pdf.multi_cell(0, 9, pdf.txt(f"Capítulos {first} – {last}"), align="C", new_x="LMARGIN", new_y="NEXT")
 
@@ -267,6 +247,11 @@ class Worker:
                     self.make_pdf(first, first + CHAPTERS_PER_PDF - 1)
                     continue
 
+                if state.get('source') and state['next_chapter'] > len(state['source']['urls']):
+                    if state['next_chapter'] > first:
+                        self.make_pdf(first, state['next_chapter'] - 1)
+                    log('Fin de los enlaces conocidos. Agrega más URLs si faltan capítulos.')
+                    break
                 n = state["next_chapter"]
                 self.current = n
 
@@ -333,14 +318,14 @@ merge_status = {"running": False}
 def merge_pdfs(items):
     """Une los PDFs (ordenados por capítulo) en un único archivo con marcadores."""
     first, last = items[0]["first"], items[-1]["last"]
-    name = f"Yerno_Millonario_{first}-{last}_completo.pdf"
+    name = f"{(state.get('source') or {}).get('id', 'legacy')}_{first}-{last}_completo.pdf"
     path = os.path.join(OUTPUT_DIR, name)
     log(f"🔗 Uniendo {len(items)} PDFs ({first}-{last})…")
     writer = PdfWriter()
     for it in items:
         reader = PdfReader(os.path.join(OUTPUT_DIR, it["file"]))
         writer.append(reader, outline_item=f"Capítulos {it['first']}-{it['last']}")
-    writer.add_metadata({"/Title": f"Yerno Millonario - Capítulos {first}-{last}"})
+    writer.add_metadata({"/Title": f"{(state.get('source') or {}).get('title', 'Yerno Millonario')} - Capítulos {first}-{last}"})
     tmp = path + ".part"
     with open(tmp, "wb") as f:
         writer.write(f)
@@ -397,7 +382,9 @@ def api_status():
             "merging": merge_status["running"],
             "logs": new_logs,
             "output_dir": OUTPUT_DIR,
-            "default_start": START_CHAPTER,
+            "default_start": state.get('initial_chapter', START_CHAPTER),
+            "source_url": (state.get('source') or {}).get('url', ''),
+            "novel_title": (state.get('source') or {}).get('title', 'Yerno Millonario'),
         })
 
 
@@ -442,6 +429,7 @@ def api_merge():
         items = sorted(
             (p for p in state["pdfs"]
              if os.path.exists(os.path.join(OUTPUT_DIR, p["file"]))
+             and (not state.get('source') or p['file'].startswith(state['source']['id'] + '_'))
              and p["first"] >= int(lo) and p["last"] <= int(hi)),
             key=lambda p: p["first"])
     if len(items) < 2:
@@ -461,7 +449,7 @@ def api_set_start():
         return jsonify({"ok": False, "msg": "pausa primero la descarga"}), 409
     data = request.get_json(silent=True) or {}
     if data.get("reset"):
-        n = START_CHAPTER
+        n = state.get("initial_chapter", START_CHAPTER)
     else:
         try:
             n = int(data.get("chapter"))
@@ -499,8 +487,71 @@ def download(filename):
     return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
 
 
+
+operation_lock = threading.RLock()
+
+@app.route('/api/set_url', methods=['POST'])
+def api_set_url():
+    if worker.running or merge_status['running']:
+        return jsonify(ok=False, msg='Pausa primero y espera a que termine la unión'), 409
+    data = request.get_json(silent=True) or {}
+    try:
+        config, title, preview = sites.analyze(data)
+        if data.get('preview'):
+            return jsonify(ok=True, msg=f"{len(config['urls'])} enlaces detectados. Revisa orden y texto.",
+                           urls=config['urls'], title=title, preview=preview)
+        config['id'] = uuid.uuid4().hex[:12]
+        for f in os.listdir(CACHE_DIR):
+            if f.endswith('.json'):
+                os.remove(os.path.join(CACHE_DIR, f))
+        with state_lock:
+            state.update(source=config, next_chapter=1, batch_start=1, initial_chapter=1)
+            save_state()
+        worker.status = 'detenido'
+        worker.current = None
+        log('Fuente aplicada; PDFs anteriores conservados. Numeración según posición en la lista.')
+        return jsonify(ok=True, msg='Fuente aplicada. Pulsa Iniciar/Reanudar.')
+    except Exception as e:
+        return jsonify(ok=False, msg=f'No se pudo aplicar la fuente: {e}'), 400
+
+@app.route('/api/delete_pdf', methods=['POST'])
+def api_delete_pdf():
+    if worker.running or merge_status['running']:
+        return jsonify(ok=False, msg='Pausa la descarga y espera a que termine la unión'), 409
+    name = (request.get_json(silent=True) or {}).get('file')
+    if not isinstance(name, str) or '/' in name or "\\" in name or not name.lower().endswith('.pdf'):
+        return jsonify(ok=False, msg='Nombre no válido'), 400
+    with state_lock:
+        if not any(p['file'] == name for p in state['pdfs'] + state.get('merged', [])):
+            return jsonify(ok=False, msg='PDF no registrado'), 404
+        path = os.path.join(OUTPUT_DIR, name)
+        if os.path.islink(path):
+            return jsonify(ok=False, msg='Enlace simbólico no permitido'), 400
+        try:
+            if os.path.exists(path): os.remove(path)
+            state['pdfs'] = [p for p in state['pdfs'] if p['file'] != name]
+            state['merged'] = [p for p in state.get('merged', []) if p['file'] != name]
+            save_state()
+        except OSError as e:
+            return jsonify(ok=False, msg=str(e)), 500
+    log('PDF eliminado: ' + name)
+    return jsonify(ok=True, msg='PDF eliminado del servidor; no se borran otras copias descargadas.')
+
+from functools import wraps
+
+def serialized(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        with operation_lock:
+            return fn(*args, **kwargs)
+    return wrapped
+
+for endpoint in ('api_start','api_resume','api_set_start','api_flush','api_merge','api_set_url','api_delete_pdf'):
+    app.view_functions[endpoint] = serialized(app.view_functions[endpoint])
+
+
 if __name__ == "__main__":
     log(f"Carpeta de salida: {OUTPUT_DIR}")
     log(f"Fuente PDF: {FONT_PATH or 'Helvetica (sin Unicode completo)'}")
     log(f"Estado cargado: siguiente capítulo {state['next_chapter']}")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False, threaded=True)
+    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", 5000)), debug=False, threaded=True)

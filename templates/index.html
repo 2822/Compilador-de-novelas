@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1115">
-<title>Yerno Millonario · Descargador</title>
+<title>Descargador Miltisitios · Descargador</title>
 <style>
   :root{
     --bg:#0f1115; --card:#171a21; --line:#262a33; --text:#e6e8ec; --muted:#8b919c;
@@ -58,12 +58,32 @@
   #btnMerge{background:#7b5cff;flex:1 1 100%;padding:12px;font-size:.95rem;margin-bottom:6px}
   li a.merged{background:#7b5cff;color:#fff}
   .hint{color:var(--muted);font-size:.78rem;margin-top:8px}
+input:not([type=number]),textarea,select{width:100%;display:block;padding:10px;margin:5px 0 12px;background:#0b0d11;color:var(--text);border:1px solid var(--line);border-radius:8px}
+label{display:block;margin-top:8px}details{margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+.actions{display:flex;gap:6px;flex-wrap:wrap}.del{background:#662b32;flex:0 0 auto;padding:8px;font-size:.85rem}
+li>div:first-child{min-width:0;overflow-wrap:anywhere}#previewSource{background:#3a3f4b}#applySource{background:var(--accent)}
 </style>
 </head>
 <body>
 <main>
-  <h1>Yerno Millonario</h1>
+  <h1 id="heading">Descargador multisitio</h1>
   <div class="sub">Descarga por bloques de 10 capítulos · <span id="outdir"></span></div>
+
+<section class="card">
+<h2>Fuente de capítulos</h2>
+<label>URL del índice o primer capítulo<input id="sourceUrl" type="url" placeholder="https://..."></label>
+<label>Título<input id="sourceTitle" value="Novela"></label>
+<label>Lectura<select id="renderer"><option value="http">HTML directo (recomendado)</option><option value="browser">Navegador Chromium / JavaScript (requiere instalación)</option></select></label>
+<details><summary>Opciones avanzadas y lista de capítulos</summary>
+<label>Selector CSS de enlaces del índice<input id="indexSelector" placeholder="Opcional: .chapter-list a"></label>
+<label>Selector CSS del texto<input id="contentSelector" placeholder="Opcional: .chapter-content"></label>
+<label>Selector CSS del enlace siguiente<input id="nextSelector" placeholder="Opcional: a[rel=next]"></label>
+<label>URLs de capítulos, una por línea, en orden<textarea id="chapterUrls" rows="6"></textarea></label>
+</details>
+<div class="row"><button id="previewSource">Analizar / vista previa</button><button id="applySource">Aplicar fuente</button></div>
+<pre id="sourceResult" aria-live="polite"></pre>
+<p class="hint">Pausa primero. Revisa el texto y orden antes de aplicar. Los capítulos se numeran por posición en la lista. No se eluden pagos ni controles de acceso. No hay compatibilidad universal garantizada.</p>
+</section>
 
   <section class="card">
     <div class="row">
@@ -126,7 +146,7 @@ async function post(url, body){
     const opt = {method:"POST"};
     if(body){ opt.headers = {"Content-Type":"application/json"}; opt.body = JSON.stringify(body); }
     const r = await fetch(url,opt); const j = await r.json();
-    if(!j.ok) addLog({t:new Date().toLocaleTimeString(), msg:"ℹ "+j.msg});
+    if(!j.ok){ addLog({t:new Date().toLocaleTimeString(), msg:"ℹ "+j.msg}); alert(j.msg); }
   }catch(e){ addLog({t:"--", msg:"✖ Sin conexión con el servidor"}); }
   refresh();
 }
@@ -134,7 +154,7 @@ $("btnStart").onclick = () => post("/api/start");
 $("btnPause").onclick = () => post("/api/pause");
 $("btnFlush").onclick = () => { if(confirm("¿Generar PDF con los capítulos descargados de este bloque?")) post("/api/flush"); };
 
-let defaultStart = 6947;
+let defaultStart = 1;
 $("btnSet").onclick = () => {
   const n = parseInt($("startInput").value, 10);
   if(!n || n < 1){ alert("Escribe un número de capítulo válido"); return; }
@@ -151,7 +171,7 @@ $("startInput").addEventListener("keydown", e => { if(e.key === "Enter") $("btnS
 function addLog(l){
   const box = $("log"), stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
   const d = document.createElement("div");
-  d.innerHTML = `<span class="t">${l.t}</span>`; d.append(document.createTextNode(l.msg));
+  const time = document.createElement('span'); time.className='t'; time.textContent=l.t; d.append(time); d.append(document.createTextNode(l.msg));
   box.append(d);
   while(box.children.length > 300) box.firstChild.remove();
   if(stick) box.scrollTop = box.scrollHeight;
@@ -167,9 +187,15 @@ function renderPdfs(list, ulId = "pdfs", cls = ""){
   for(const p of list){
     const li = document.createElement("li");
     const info = p.parts ? ` · ${p.parts} partes` : "";
-    li.innerHTML = `<div><span></span><small>${(p.date||"").replace("T"," ")}${info}</small></div>
-                    <a class="${cls}" href="/download/${encodeURIComponent(p.file)}">⬇ Descargar</a>`;
-    li.querySelector("span").textContent = p.file;
+    const text = document.createElement('div'), title = document.createElement('span'), date = document.createElement('small');
+    title.textContent = p.file; date.textContent = (p.date || '').replace('T', ' ') + info;
+    text.append(title, date);
+    const actions = document.createElement('div'); actions.className = 'actions';
+    const link = document.createElement('a'); link.className = cls;
+    link.href = '/download/' + encodeURIComponent(p.file); link.textContent = '⬇ Descargar';
+    const del = document.createElement('button'); del.className = 'del'; del.textContent = 'Eliminar';
+    del.onclick = () => { if(confirm('¿Eliminar del servidor ' + p.file + '? No se borran otras copias descargadas.')) post('/api/delete_pdf',{file:p.file}); };
+    actions.append(link,del); li.append(text,actions);
     ul.append(li);
   }
 }
@@ -189,6 +215,9 @@ async function refresh(){
     if(s.total_downloaded > 0) everStarted = true;
     $("btnStart").disabled = s.running;
     $("btnStart").textContent = everStarted ? "▶ Reanudar" : "▶ Iniciar";
+    $("heading").textContent = s.novel_title || "Descargador multisitio";
+    $("previewSource").disabled = $("applySource").disabled = s.running || s.merging || configuring;
+    if(!$("sourceUrl").value && s.source_url) $("sourceUrl").value = s.source_url;
     $("btnPause").disabled = !s.running || s.status === "pausando";
     $("btnFlush").disabled = s.running || s.batch_done === 0;
     defaultStart = s.default_start;
@@ -202,6 +231,26 @@ async function refresh(){
     $("btnMerge").textContent = s.merging ? "⏳ Uniendo PDFs…" : `🔗 Unir ${s.pdfs.length} PDFs en uno`;
   }catch(e){ $("badge").textContent = "sin conexión"; $("badge").className = "badge error"; }
 }
+let configuring = false;
+async function configure(preview){
+  if(!preview && !confirm('¿Aplicar la fuente? Se descartan capítulos pendientes sin PDF. Los PDFs anteriores se conservan.')) return;
+  configuring = true; $('sourceResult').textContent = 'Analizando…';
+  $('previewSource').disabled = $('applySource').disabled = true;
+  try {
+    const response = await fetch('/api/set_url', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      url:$('sourceUrl').value.trim(),title:$('sourceTitle').value,renderer:$('renderer').value,
+      urls:$('chapterUrls').value,index_selector:$('indexSelector').value,
+      content_selector:$('contentSelector').value,next_selector:$('nextSelector').value,preview
+    })});
+    const result = await response.json();
+    $('sourceResult').textContent = result.msg + (result.preview ? '\n\n' + result.title + '\n' + result.preview : '');
+    if(result.ok && preview) $('chapterUrls').value = result.urls.join('\n');
+    if(result.ok && !preview){ $('startInput').value = ''; everStarted = false; }
+  } catch(e) { $('sourceResult').textContent = 'No se pudo conectar: ' + e.message; }
+  finally { configuring = false; refresh(); }
+}
+$('previewSource').onclick=()=>configure(true);
+$('applySource').onclick=()=>configure(false);
 refresh(); setInterval(refresh, 1500);
 </script>
 </body>

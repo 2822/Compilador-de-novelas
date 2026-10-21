@@ -1,0 +1,74 @@
+DESCARGADOR MULTISITIO — HTML y navegador opcional
+
+Este paquete sustituye el servidor y la plantilla anteriores; conserva PDFs por
+bloques de 10, pausa, PDF parcial, unión y registro. Añade sites.py, que debe quedar
+junto a app.py. No hay compatibilidad garantizada con cualquier sitio.
+
+INSTALAR
+1. Detén el servidor anterior (Ctrl+C) y respalda tu proyecto y estado.json.
+2. Extrae el ZIP. Puedes ejecutar esta carpeta o copiar app.py, sites.py y
+   templates/index.html a tu proyecto. No borres tu carpeta de PDFs.
+3. En esa carpeta: python -m pip install -r requirements.txt
+4. Ejecuta: python app.py
+5. Abre http://127.0.0.1:5000 y recarga la página. No abras el HTML directamente.
+
+Si usas PyFPDF/fpdf antiguo, puede entrar en conflicto con fpdf2. En un entorno
+dedicado al programa, desinstala fpdf y fpdf2 y reinstala requirements.txt.
+El servidor escucha solo en 127.0.0.1 y no incluye autenticación: no lo expongas.
+La carpeta predeterminada se mantiene: /sdcard/yerno millonario.
+En Termux concede permiso de almacenamiento mediante termux-setup-storage.
+En otros sistemas configura YM_OUTPUT con una carpeta escribible.
+
+MODO NAVEGADOR OPCIONAL (JAVASCRIPT)
+En un entorno compatible con Playwright/Chromium:
+  python -m pip install -r requirements-browser.txt
+  python -m playwright install chromium
+Selecciona Navegador Chromium en la interfaz antes de analizar la página.
+No se garantiza que Playwright/Chromium se instale o ejecute directamente en
+Termux/Android. Si no es compatible, usa HTML directo o ejecuta el servidor en
+un equipo compatible. El modo navegador no usa la sesión de tu navegador móvil,
+no inicia sesión ni salta CAPTCHA, pagos o restricciones. Espera al selector
+configurado hasta 15 segundos; sin selector espera 2,5 segundos tras cargar DOM.
+
+USO
+1. Pulsa Pausar y espera a que termine la descarga y cualquier unión.
+2. Introduce la URL del índice o de un capítulo y el título de portada.
+3. Pulsa Analizar / vista previa.
+4. En Opciones avanzadas revisa la lista y el orden. Se detectan enlaces que
+   dicen Capítulo 1, Chapter 1 o Episodio 1, o los que coincidan con el selector
+   CSS del índice. Se conserva el orden del documento: puede necesitar corrección.
+   Puedes pegar manualmente las URLs de capítulos, una por línea.
+5. Si la selección de texto es incorrecta, configura el selector CSS de su
+   contenedor. Si el sitio requiere JavaScript, prueba el navegador opcional.
+6. Aplica la fuente y pulsa Iniciar/Reanudar.
+
+Los números de capítulo en modo multisitio son POSICIONES de la lista, empezando
+en 1. No se interpreta un identificador de libro como número de capítulo ni se
+inventan URLs. Se siguen enlaces Siguiente del mismo dominio sin repetir URLs.
+Al terminar la lista se genera el PDF parcial pendiente y se detiene.
+Si aparece error por acceso, texto corto o selector incorrecto, se detiene con
+un mensaje. Una vista previa detectada no garantiza que todos los capítulos
+sean accesibles o completos: revisa el texto y las URLs.
+Si cambias la URL tras analizar otra novela, limpia la lista manual anterior
+para que se vuelva a detectar el índice.
+Aplicar una fuente descarta los capítulos pendientes sin PDF; conserva los PDFs
+anteriores. Los nombres llevan un identificador para evitar sobrescrituras entre
+fuentes. La unión incluye solo los PDFs de la fuente activa en modo multisitio.
+Eliminar requiere pausa y borra del servidor; no borra copias del navegador.
+La configuración y el progreso se guardan en estado.json.
+
+LÍMITES
+- No se garantiza BueNovela ni otro dominio concreto: no se probaron en vivo.
+- Las fichas de libros, índices dinámicos, paginación, contenido en imágenes,
+  lectores especiales o estructuras no reconocidas pueden requerir adaptación.
+- Chromium es opcional y dependiente del sistema; no resuelve acceso restringido.
+- Usa solo contenido que tengas permiso de guardar y respeta el sitio.
+- No se reconstruye contenido detrás de pagos ni se eliminan controles de acceso.
+- En modo original, sin aplicar otra fuente, se conserva la plantilla del sitio
+  anterior. Los errores HTTP ahora detienen el intento, no esperan indefinidamente.
+
+VERIFICACIÓN
+Sintaxis de Python y JavaScript comprobadas; 11 pruebas locales de extractores y
+análisis simulado pasadas. Ejecuta: python test_sites.py
+No se probó el servidor Flask ni Chromium ni descargas reales en este entorno.
+Flask y Playwright no estaban disponibles para una prueba de integración.

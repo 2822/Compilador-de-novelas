@@ -7,3 +7,17 @@ venv/
 __pycache__/
 >>>>>>> 5a0387b... Primera versión...
 
+
+# Archivos locales del descargador
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.cache/
+estado.json
+estado.json.tmp
+*.pdf
+*.part
