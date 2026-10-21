@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1115">
+<title>Yerno Millonario · Descargador</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#262a33; --text:#e6e8ec; --muted:#8b919c;
+    --accent:#4f8cff; --ok:#3ecf8e; --warn:#f5b84b; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  main{max-width:760px;margin:0 auto;padding:20px 16px 40px}
+  h1{font-size:1.35rem;margin:0 0 2px;font-weight:650}
+  .sub{color:var(--muted);font-size:.85rem;margin-bottom:18px;word-break:break-all}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  button{flex:1 1 160px;border:0;border-radius:12px;padding:16px;font-size:1.05rem;font-weight:600;
+         cursor:pointer;color:#fff;transition:opacity .15s,transform .05s}
+  button:active{transform:scale(.98)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  #btnStart{background:var(--accent)}
+  #btnPause{background:#3a3f4b}
+  #btnFlush{background:transparent;border:1px solid var(--line);color:var(--muted);
+            font-size:.85rem;padding:10px;flex:1 1 100%}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .stat b{display:block;font-size:1.25rem}
+  .stat span{color:var(--muted);font-size:.78rem}
+  .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.78rem;font-weight:600;
+         background:#262a33;color:var(--muted)}
+  .badge.descargando{background:rgba(79,140,255,.15);color:var(--accent)}
+  .badge.esperando,.badge.pausando{background:rgba(245,184,75,.15);color:var(--warn)}
+  .badge.error{background:rgba(255,107,107,.15);color:var(--err)}
+  .bar{height:12px;background:#0b0d11;border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+  .bar>div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--ok));transition:width .4s}
+  .barlbl{display:flex;justify-content:space-between;color:var(--muted);font-size:.8rem;margin-top:6px}
+  #log{height:240px;overflow-y:auto;background:#0b0d11;border-radius:10px;padding:10px;
+       font:12.5px/1.55 ui-monospace,Menlo,Consolas,monospace;color:#c9cdd4;border:1px solid var(--line)}
+  #log .t{color:#5d6370;margin-right:6px}
+  h2{font-size:1rem;margin:0 0 10px;font-weight:600}
+  ul{list-style:none;margin:0;padding:0}
+  li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  li:first-child{border-top:0}
+  li small{color:var(--muted);display:block;font-size:.75rem}
+  li a{background:var(--ok);color:#06140d;text-decoration:none;font-weight:700;font-size:.85rem;
+       padding:8px 14px;border-radius:10px;white-space:nowrap}
+  .empty{color:var(--muted);font-size:.9rem}
+  .startrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .startrow input{flex:1 1 120px;min-width:0;background:#0b0d11;border:1px solid var(--line);color:var(--text);
+                  border-radius:10px;padding:12px;font-size:1rem}
+  .startrow input:focus{outline:none;border-color:var(--accent)}
+  .startrow button{flex:0 1 auto;padding:12px 16px;font-size:.9rem}
+  #btnSet{background:var(--accent)}
+  #btnReset{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  #btnMerge{background:#7b5cff;flex:1 1 100%;padding:12px;font-size:.95rem;margin-bottom:6px}
+  li a.merged{background:#7b5cff;color:#fff}
+  .hint{color:var(--muted);font-size:.78rem;margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Yerno Millonario</h1>
+  <div class="sub">Descarga por bloques de 10 capítulos · <span id="outdir"></span></div>
+
+  <section class="card">
+    <div class="row">
+      <button id="btnStart">▶ Iniciar</button>
+      <button id="btnPause" disabled>⏸ Pausar</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">Progreso</h2><span id="badge" class="badge">detenido</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="sCurrent">–</b><span>Capítulo actual</span></div>
+      <div class="stat"><b id="sTotal">0</b><span>Descargados</span></div>
+      <div class="stat"><b id="sPdfs">0</b><span>PDFs</span></div>
+    </div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="barlbl"><span id="barTxt">Bloque –</span><span id="barPct">0%</span></div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnFlush" title="Crea un PDF con los capítulos ya descargados del bloque actual">
+        Generar PDF parcial del bloque actual</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Capítulo inicial</h2>
+    <div class="startrow">
+      <input id="startInput" type="number" inputmode="numeric" min="1" placeholder="Ej. 7000">
+      <button id="btnSet">Aplicar</button>
+      <button id="btnReset">Reiniciar</button>
+    </div>
+    <div class="hint" id="startHint">Disponible solo en pausa. Los PDFs ya creados se conservan;
+      los capítulos del bloque sin terminar se descartan.</div>
+  </section>
+
+  <section class="card">
+    <h2>Registro en vivo</h2>
+    <div id="log"></div>
+  </section>
+
+  <section class="card">
+    <h2>PDFs completados</h2>
+    <div class="row"><button id="btnMerge" disabled>🔗 Unir todos los PDFs en uno</button></div>
+    <ul id="pdfs"><li class="empty">Aún no hay PDFs.</li></ul>
+  </section>
+
+  <section class="card" id="mergedCard" style="display:none">
+    <h2>PDFs unidos</h2>
+    <ul id="merged"></ul>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let lastLog = 0, everStarted = false;
+
+async function post(url, body){
+  try{
+    const opt = {method:"POST"};
+    if(body){ opt.headers = {"Content-Type":"application/json"}; opt.body = JSON.stringify(body); }
+    const r = await fetch(url,opt); const j = await r.json();
+    if(!j.ok) addLog({t:new Date().toLocaleTimeString(), msg:"ℹ "+j.msg});
+  }catch(e){ addLog({t:"--", msg:"✖ Sin conexión con el servidor"}); }
+  refresh();
+}
+$("btnStart").onclick = () => post("/api/start");
+$("btnPause").onclick = () => post("/api/pause");
+$("btnFlush").onclick = () => { if(confirm("¿Generar PDF con los capítulos descargados de este bloque?")) post("/api/flush"); };
+
+let defaultStart = 6947;
+$("btnSet").onclick = () => {
+  const n = parseInt($("startInput").value, 10);
+  if(!n || n < 1){ alert("Escribe un número de capítulo válido"); return; }
+  if(confirm(`¿Continuar la descarga desde el capítulo ${n}?`)) post("/api/set_start", {chapter:n});
+};
+$("btnReset").onclick = () => {
+  if(confirm(`¿Reiniciar el progreso desde el capítulo ${defaultStart}?`)) post("/api/set_start", {reset:true});
+};
+$("btnMerge").onclick = () => {
+  if(confirm("¿Unir todos los PDFs completados en un solo archivo?")) post("/api/merge");
+};
+$("startInput").addEventListener("keydown", e => { if(e.key === "Enter") $("btnSet").click(); });
+
+function addLog(l){
+  const box = $("log"), stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+  const d = document.createElement("div");
+  d.innerHTML = `<span class="t">${l.t}</span>`; d.append(document.createTextNode(l.msg));
+  box.append(d);
+  while(box.children.length > 300) box.firstChild.remove();
+  if(stick) box.scrollTop = box.scrollHeight;
+}
+
+let lastPdfKey = "", lastMergedKey = "";
+function renderPdfs(list, ulId = "pdfs", cls = ""){
+  const ul = $(ulId), key = JSON.stringify(list);
+  if(ulId === "pdfs"){ if(key === lastPdfKey) return; lastPdfKey = key; }
+  else { if(key === lastMergedKey) return; lastMergedKey = key; }
+  if(!list.length){ ul.innerHTML = '<li class="empty">Aún no hay PDFs.</li>'; return; }
+  ul.innerHTML = "";
+  for(const p of list){
+    const li = document.createElement("li");
+    const info = p.parts ? ` · ${p.parts} partes` : "";
+    li.innerHTML = `<div><span></span><small>${(p.date||"").replace("T"," ")}${info}</small></div>
+                    <a class="${cls}" href="/download/${encodeURIComponent(p.file)}">⬇ Descargar</a>`;
+    li.querySelector("span").textContent = p.file;
+    ul.append(li);
+  }
+}
+
+async function refresh(){
+  try{
+    const r = await fetch("/api/status?since="+lastLog); const s = await r.json();
+    s.logs.forEach(l => { addLog(l); lastLog = l.id; });
+    $("outdir").textContent = s.output_dir;
+    $("badge").textContent = s.status; $("badge").className = "badge " + s.status;
+    $("sCurrent").textContent = s.current ?? s.next_chapter;
+    $("sTotal").textContent = s.total_downloaded;
+    $("sPdfs").textContent = s.pdfs.length;
+    const pct = Math.min(100, Math.round(s.batch_done / s.batch_size * 100));
+    $("bar").style.width = pct + "%"; $("barPct").textContent = pct + "%";
+    $("barTxt").textContent = `Bloque ${s.batch_start}–${s.batch_end} · ${s.batch_done}/${s.batch_size}`;
+    if(s.total_downloaded > 0) everStarted = true;
+    $("btnStart").disabled = s.running;
+    $("btnStart").textContent = everStarted ? "▶ Reanudar" : "▶ Iniciar";
+    $("btnPause").disabled = !s.running || s.status === "pausando";
+    $("btnFlush").disabled = s.running || s.batch_done === 0;
+    defaultStart = s.default_start;
+    $("btnReset").textContent = `Reiniciar (${s.default_start})`;
+    $("btnSet").disabled = $("btnReset").disabled = $("startInput").disabled = s.running;
+    if(document.activeElement !== $("startInput") && !$("startInput").value) $("startInput").placeholder = "Actual: " + s.next_chapter;
+    renderPdfs(s.pdfs);
+    $("mergedCard").style.display = s.merged.length ? "" : "none";
+    renderPdfs(s.merged, "merged", "merged");
+    $("btnMerge").disabled = s.merging || s.pdfs.length < 2;
+    $("btnMerge").textContent = s.merging ? "⏳ Uniendo PDFs…" : `🔗 Unir ${s.pdfs.length} PDFs en uno`;
+  }catch(e){ $("badge").textContent = "sin conexión"; $("badge").className = "badge error"; }
+}
+refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>
